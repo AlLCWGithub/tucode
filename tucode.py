@@ -9,6 +9,40 @@ TT_DIV = "DIV"
 TT_LPAREN = "LPAREN"
 TT_RPAREN = "RPAREN"
 
+class Error:
+  def __init__(self, error_name, details):
+    self.error_name = error_name
+    self.details = details
+  def __repr__(self):
+    return f"{self.error_name}: {self.details}"
+  
+class IllegalCharError(Error):
+  def __init__(self, details):
+    super().__init__("Illegal Character", details)
+
+class InvalidSyntaxError(Error):
+  def __init__(self, details):
+    super().__init__("Invalid Syntax", details)
+
+class ParseResult:
+  def __init__(self):
+    self.node = None
+    self.error = None
+
+  def success(self, node):
+    self.node = node
+    return self
+  
+  def failure(self, error):
+    self.error = error
+    return self
+  
+  def register(self, res):
+    if isinstance(res, ParseResult):
+      if res.error: self.error = res.error
+      return res.node
+    return res
+
 class Token:
   def __init__(self, type_, value):
     self.type = type_
@@ -74,7 +108,9 @@ class Lexer:
         self.advance()
       elif self.current_char() in " \t":
         self.skip_whitespace()
-    return tokens
+      else:
+        return [], IllegalCharError(self.current_char())
+    return tokens, None
 
 class NumberNode:
   def __init__(self, token):
@@ -112,41 +148,57 @@ class Parser:
     self.pos += 1
 
   def parse_factor(self):
+    res = ParseResult()
     token = self.current_token()
     if token.type == TT_MINUS:
       self.advance()
-      return UnaryOpNode(token.type, self.parse_factor())
+      factor = res.register(self.parse_factor())
+      if res.error: return res.failure(res.error)
+      return res.success(UnaryOpNode(token.type, factor))
     elif token.type == TT_LPAREN:
       self.advance()
-      result = self.parse_expr()
+      result = res.register(self.parse_expr())
+      if res.error: return res.failure(res.error)
+      if self.current_token() is not None and self.current_token().type == TT_RPAREN:
+        self.advance()
+      else:
+        return res.failure(InvalidSyntaxError("Expected \")\""))
+      return res.success(result)
+    if token.type in (TT_INT, TT_FLOAT):
       self.advance()
-      return result
-    self.advance()
-    return NumberNode(token)
+      return res.success(NumberNode(token))
+    else:
+      return res.failure(InvalidSyntaxError("Expected a number"))
   
   def parse_term(self):
-    left = self.parse_factor()
+    res = ParseResult()
+    left = res.register(self.parse_factor())
+    if res.error: return res.failure(res.error)
     while self.current_token() is not None:
       if self.current_token().type in (TT_MUL, TT_DIV):
         op_token = self.current_token()
         self.advance()
-        right = self.parse_factor()
+        right = res.register(self.parse_factor())
+        if res.error: return res.failure(res.error)
         left = BinOpNode(left, op_token, right)
       else:
         break
-    return left
+    return res.success(left)
   
   def parse_expr(self):
-    left = self.parse_term()
+    res = ParseResult()
+    left = res.register(self.parse_term())
+    if res.error: return res.failure(res.error)
     while self.current_token() is not None:
       if self.current_token().type in (TT_PLUS, TT_MINUS):
         op_token = self.current_token()
         self.advance()
-        right = self.parse_term()
+        right = res.register(self.parse_term())
+        if res.error: return res.failure(res.error)
         left = BinOpNode(left, op_token, right)
       else:
         break
-    return left
+    return res.success(left)
 
 class Interpreter:
   def visit(self, node):
@@ -169,17 +221,24 @@ class Interpreter:
       return -self.visit(node.node)
 
 def run(text):
+  if text.strip() == "": return None
   lexer = Lexer(text)
-  tokens = lexer.make_tokens()
+  tokens, error = lexer.make_tokens()
+  if error: return error
   parser = Parser(tokens)
-  tree = parser.parse_expr()
+  result = parser.parse_expr()
+  if result.error: return result.error
+  tree = result.node
   interpreter = Interpreter()
   return interpreter.visit(tree)
 
 if __name__ == "__main__":
   lexer = Lexer("42 - 7 * 8 - 7  * 4")
-  tokens = lexer.make_tokens()
+  tokens, error = lexer.make_tokens()
   parser = Parser(tokens)
-  tree = parser.parse_expr()
+  result = parser.parse_expr()
+  tree = result.node
   interpreter = Interpreter()
   print(interpreter.visit(tree))
+  error = IllegalCharError("\"@\"")
+  print(error)
