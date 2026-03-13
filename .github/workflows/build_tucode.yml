@@ -1,10 +1,10 @@
-name: Build Executable
+name: Build TuCode
 
 on:
   workflow_dispatch:
 
 jobs:
-  buils-windows:
+  build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
