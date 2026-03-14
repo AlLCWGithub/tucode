@@ -1,4 +1,7 @@
 DIGITS = "0123456789"
+LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+LETTERS_DIGIT = LETTERS + "_0123456789"
+KEYWORDS = ["LET"]
 
 TT_INT = "INT"
 TT_FLOAT = "FLOAT"
@@ -8,6 +11,9 @@ TT_MUL = "MUL"
 TT_DIV = "DIV"
 TT_LPAREN = "LPAREN"
 TT_RPAREN = "RPAREN"
+TT_EQ = "EQ"
+TT_IDENTIFIER = "IDENTIFIER"
+TT_KEYWORD = "KEYWORD"
 
 class Error:
   def __init__(self, error_name, details):
@@ -106,12 +112,26 @@ class Lexer:
       elif self.current_char() == ")":
         tokens.append(Token(TT_RPAREN, ")"))
         self.advance()
+      elif self.current_char() == "=":
+        tokens.append(Token(TT_EQ, "="))
+        self.advance()
       elif self.current_char() in " \t":
         self.skip_whitespace()
+      elif self.current_char() in LETTERS:
+        tokens.append(self.make_identifier())
       else:
         return [], IllegalCharError(self.current_char())
     return tokens, None
-
+  def make_identifier(self):
+    word = ""
+    while self.current_char() is not None and self.current_char() in LETTERS_DIGIT:
+      word += self.current_char()
+      self.advance()
+    if word in KEYWORDS:
+      return Token(TT_KEYWORD, word)
+    else:
+      return Token(TT_IDENTIFIER, word)
+    
 class NumberNode:
   def __init__(self, token):
     self.token = token
@@ -135,6 +155,20 @@ class UnaryOpNode:
 
   def __repr__(self):
     return f"UnaryOpNode({self.op_token}, {self.node})"
+  
+class VarAccessNode:
+  def __init__(self, token):
+    self.token = token
+
+  def __repr__(self):
+    return f"VarAccessNode({self.token})"
+  
+class VarAssignNode:
+  def __init__(self, varname, value):
+    self.varname = varname
+    self.value = value
+  def __repr__(self):
+    return f"VarAssignNode({self.varname}, {self.value})"
 
 class Parser:
   def __init__(self, tokens):
